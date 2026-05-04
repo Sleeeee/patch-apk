@@ -231,8 +231,12 @@ class APK:
         Log.verbose(f"[apktool] {exe} {' '.join(args)}\n{cp.stdout}")
         if cp.returncode != 0:
             Log.verbose(cp.stderr)
-        if ok_required and cp.returncode != 0:
-            Log.abort(f"apktool failed: \n\n{exe}{' '.join(args)}\n\n" + cp.stdout +"\n\n---\n\n"+ cp.stderr)
+        while ok_required and cp.returncode != 0:
+            fixed = self._fix_apktool_error(cp.stderr)
+            if fixed:
+                cp = subprocess.run([exe, *args], input="\r\n", text=True, capture_output=True)
+            else:
+                Log.abort(f"apktool failed: \n\n{exe}{' '.join(args)}\n\n" + cp.stdout +"\n\n---\n\n"+ cp.stderr)
 
     def _run(self, args: List[str], ok_required: bool = False):
         Log.verbose(f"[{args[0]}] {' '.join(args)}")
@@ -495,7 +499,7 @@ class APK:
                     r'(?m)^(\s*\.method\s+static\s+constructor\s+<clinit>\(\)V\s*$)',
                     r'\1\n    .registers 1',
                     clinit_block,
-                    count=1,
+                        count=1,
                 )
 
             # Insert the load instructions after the (possibly updated) .registers line.
@@ -545,3 +549,30 @@ class APK:
                         fh.write(ns)
                     count += 1
         Log.verbose(f" Forced {count} private resource refs to public")
+
+    def _fix_apktool_error(self, stderr: str) -> bool:
+        pattern = re.compile(r"W:\s+(?P<path>.*?):\d+:\s+error:\s+attribute\s+android:(?P<attr>[^\s]+)\s+not found\.")
+        matches = list(pattern.finditer(stderr))
+
+        if not matches:
+            return False
+
+        Log.info("Detected resource namespace mismatch, trying to resolve automatically")
+
+        count = 0
+        for m in matches:
+            path, attr = m.group("path"), m.group("attr")
+            data = ""
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = f.read()
+                if data:
+                    data = data.replace(f"android:{attr}", attr)
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(data)
+                    count += 1
+
+            except Exception as e:
+                Log.abort(e)
+        Log.info(f"Fixed {count} broken namespaces, restarting build")
+        return True
