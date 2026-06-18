@@ -134,7 +134,13 @@ def main():
             Log.info(f" - {os.path.basename(p)}")
 
         # Test if apktool is version 3.0.2 or newer
-        apktool_version = subprocess.run(["apktool", "-version"], capture_output=True, text=True).stdout.strip()
+        apktool_version = subprocess.run(["apktool", "-version"], shell=True, capture_output=True, text=True, input="\n").stdout.split('\n')
+
+        if len(apktool_version) < 1: 
+            Log.abort("getting apktool version had an unexpected error")
+
+        apktool_version = apktool_version[0].strip()
+        
         if parse_version(apktool_version) < parse_version("3.0.2"):
             Log.abort(f"apktool version 3.0.2 or newer is required, found {apktool_version}")
             return
