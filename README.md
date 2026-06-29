@@ -12,8 +12,11 @@ An APK patcher, for use with [objection](https://github.com/sensepost/objection)
 
 ### Changelog
 
+* **29th June 2026:** 
+  * Updated to work on windows
+
 * **4th April 2026:**
- * Update for compatibility with apktool 3.x which no longer has `--main-classes-only`
+  * Update for compatibility with apktool 3.x which no longer has `--main-classes-only`
 
 * **10th October 2024:**
   * Added mult-user support. If the apk file path can't be found for the default user, it will try other users
