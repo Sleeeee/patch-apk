@@ -14,10 +14,22 @@ def sign_with_apksigner(apk_path: str):
     DEBUG_KS_NAME  = "patchapk.jks"
     DEBUG_KS_ALIAS = "patchapk"
     DEBUG_KS_PASS  = "patchapk" 
+  
     script_dir = os.path.dirname(os.path.realpath(__file__))
     ks_path = os.path.join(script_dir, DEBUG_KS_NAME)
+
+    command_name = "apksigner.bat" if os.name == "nt" else "apksigner"
+    apksigner_path = shutil.which(command_name)
+
+    if apksigner_path is None:
+        raise RuntimeError(
+            f"{command_name} was not found. Add the Android SDK "
+            "build-tools directory to PATH."
+        )
+
     cmd = [
-        "apksigner", "sign",
+        apksigner_path,
+        "sign",
         "--ks", ks_path,
         "--ks-key-alias", DEBUG_KS_ALIAS,
         "--ks-pass", f"pass:{DEBUG_KS_PASS}",
@@ -29,9 +41,9 @@ def sign_with_apksigner(apk_path: str):
         "--v4-signing-enabled=false",
         apk_path,
     ]
-    Log.verbose("[apksigner] " + " ".join(cmd))
-    cp = subprocess.run(cmd, check=True)
 
+    Log.verbose("[apksigner] " + subprocess.list2cmdline(cmd))
+    subprocess.run(cmd, check=True)
 
 def choose_package(adb: ADBHelper, pattern: str) -> str:
     matches = adb.get_packages(pattern)
@@ -134,7 +146,12 @@ def main():
             Log.info(f" - {os.path.basename(p)}")
 
         # Test if apktool is version 3.0.2 or newer
-        apktool_version = subprocess.run(["apktool", "-version"], capture_output=True, text=True).stdout.strip()
+        command_name = "apktool.bat" if os.name == "nt" else "apktool"
+        apktool_path = shutil.which(command_name)
+
+
+        apktool_version = subprocess.run([apktool_path, "-version"], capture_output=True, text=True, input="\n").stdout.strip().split("\n")[0]
+
         if parse_version(apktool_version) < parse_version("3.0.2"):
             Log.abort(f"apktool version 3.0.2 or newer is required, found {apktool_version}")
             return
