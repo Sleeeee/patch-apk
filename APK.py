@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 from pathlib import Path
 from typing import List, Optional
 from Log import Log
+from ErrorHandler import ErrorHandler
 from packaging.version import parse as parse_version
 
 # If you put FridaGadget.py next to this file, this import will work.
@@ -19,7 +20,7 @@ class APK:
    
     NULL_DECODED_DRAWABLE_COLOR = "#000000ff"
 
-    def __init__(self, apk_path: str, workdir: Optional[str] = None, verbose: bool = False):
+    def __init__(self, apk_path: str, workdir: Optional[str] = None, verbose: bool = False, fix_aggressive: bool = False):
         self.apk_path = os.path.abspath(apk_path)
         self.verbose = verbose
         self._check_exists(self.apk_path)
@@ -27,6 +28,7 @@ class APK:
         self.workdir = workdir or self._tmpbase.name
         Path(self.workdir).mkdir(parents=True, exist_ok=True)
         self.has_been_merged = False
+        self.error_handler = ErrorHandler(fix_aggressive)
 
     # ---------- Creation ----------
     @classmethod
@@ -231,8 +233,10 @@ class APK:
         Log.verbose(f"[apktool] {exe} {' '.join(args)}\n{cp.stdout}")
         if cp.returncode != 0:
             Log.verbose(cp.stderr)
+
         while ok_required and cp.returncode != 0:
-            fixed = self._fix_apktool_error(cp.stderr)
+            # Pass error to handler (action picked based on --fix-aggressive flag)
+            fixed = self.error_handler.handle(cp.stderr)
             if fixed:
                 cp = subprocess.run([exe, *args], input="\r\n", text=True, capture_output=True)
             else:
@@ -549,95 +553,3 @@ class APK:
                         fh.write(ns)
                     count += 1
         Log.verbose(f" Forced {count} private resource refs to public")
-
-    def _fix_apktool_namespaces(self, matches):
-        Log.info("Detected resource namespace mismatch, trying to resolve automatically")
-
-        count = 0
-        for m in matches:
-            path, attr = m.group("path"), m.group("attr")
-            data = ""
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = f.read()
-                if data:
-                    data = data.replace(f"android:{attr}", attr)
-                    with open(path, "w", encoding="utf-8") as f:
-                        f.write(data)
-                    count += 1
-
-            except Exception as e:
-                Log.abort(e)
-        Log.info(f"Fixed {count} broken namespaces, restarting build")
-
-    def _fix_apktool_duplicates(self, matches):
-        Log.info("Detected duplicate attribute error, trying to resolve automatically")
-
-        # Matches duplicates attributes, and groups the first attribute occurence (\1), the duplicate (\2) and anything in between (\3)
-        dup_pattern = re.compile(r'(\b([a-zA-Z0-9_:]+)="[^"]*")(.*?)\b\2="[^"]*"')
-
-        count = 0
-        for m in matches:
-            path = m.group("path")
-            data = ""
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = f.read()
-                if data and dup_pattern.search(data):
-                    while dup_pattern.search(data):
-                        # Rewrites contents without the duplicate attribute in \2
-                        data = dup_pattern.sub(r"\1\3", data)
-
-                    with open(path, "w", encoding="utf-8") as f:
-                        f.write(data)
-                    count += 1
-
-            except Exception as e:
-                Log.abort(e)
-        Log.info(f"Removed {count} duplicates, restarting build")
-
-    def _fix_apktool_incompatible_flags(self, matches):
-        Log.info("Detected incompatible flags error, trying to resolve automatically")
-
-        count = 0
-        for m in matches:
-            path, attr, value = m.group("path"), m.group("attr"), m.group("value")
-            incomp_pattern = re.compile(rf'\s+(?:[a-zA-Z0-9_]+:)?{attr}="0x0"')
-            data = ""
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = f.read()
-                if data:
-                    data = incomp_pattern.sub("", data)
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(data)
-                count += 1
-
-            except Exception as e:
-                Log.abort(e)
-        Log.info(f"Removed {count} incompatible flags, restarting build")
-
-    def _fix_apktool_error(self, stderr: str) -> bool:
-        # Matches "attribue android:example not found" error
-        namespace_error = re.compile(r"W:\s+(?P<path>.*?):\d+:\s+error:\s+attribute\s+android:(?P<attr>[^\s]+)\s+not found\.")
-        matches = list(namespace_error.finditer(stderr))
-        if matches:
-            self._fix_apktool_namespaces(matches)
-            return True
-
-        # Matches "duplicate attribute" error
-        duplicates_error = re.compile(r"W:\s+(?P<path>.*?):\d+:\s+error:\s+duplicate\s+attribute\.")
-        matches = list(duplicates_error.finditer(stderr))
-        if matches:
-            self._fix_apktool_duplicates(matches)
-            return True
-
-        # Matches "incompatible with attribute" error
-        incompatible_flags_error = re.compile(r"W:\s+(?P<path>.*?):\d+:\s*error:\s*'(?P<value>[^']+)'\s*is incompatible with attribute\s*(?P<attr>\w+).*?\[(?P<allowed>[^\]]+)\]")
-        matches = list(incompatible_flags_error.finditer(stderr))
-        if matches:
-            self._fix_apktool_incompatible_flags(matches)
-            return True
-
-        return False
-
