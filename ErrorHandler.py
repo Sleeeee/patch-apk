@@ -30,7 +30,7 @@ class ErrorHandler:
         return False
 
     def _handle_apktool_namespaces(self, matches: List[Match]) -> bool:
-        Log.warn("Detected resource namespace mismatch. This issue is likely related to https://github.com/iBotPeaches/Apktool/pull/4137\nTo solve this, you can build Apktool from source, update to 3.0.3 (once it is released), or run patch-apk with --fix-aggressive")
+        Log.warn("Detected resource namespace mismatch. This issue is likely related to https://github.com/iBotPeaches/Apktool/pull/4137\nTo solve this, you can update Apktool to 3.0.3 or higher, or run patch-apk with --fix-aggressive")
 
         if not self.fix_aggressive:
             return False
@@ -86,7 +86,7 @@ class ErrorHandler:
         return True
 
     def _handle_apktool_incompatible_flags(self, matches: List[Match]) -> bool:
-        Log.warn("Detected incompatible flags error. This issue is likely related to https://github.com/iBotPeaches/Apktool/pull/4140\nTo solve this, you can build Apktool from source, update to 3.0.3 (once it is released), or run patch-apk with --fix-aggressive")
+        Log.warn("Detected incompatible flags error. This issue is likely related to https://github.com/iBotPeaches/Apktool/pull/4140\nTo solve this, you can update Apktool to 3.0.3 or higher, or run patch-apk with --fix-aggressive")
 
         if not self.fix_aggressive:
             return False
